@@ -37,14 +37,14 @@ from .version import version as client_version
 logger = get_logger()
 
 
-class ExampleSource(metricq.IntervalSource):
+class ModbusSource(metricq.IntervalSource):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        logger.info("initializing ExampleSource")
+        logger.info("initializing ModbusSource")
         super().__init__(*args, client_version=client_version, **kwargs)
 
     @metricq.rpc_handler("config")
     async def _on_config(self, rate: float, **config: Any) -> None:
-        logger.info("ExampleSource received config: {}", config)
+        logger.info("ModbusSource received config: {}", config)
 
         self.period = 1 / rate  # type: ignore #  https://github.com/python/mypy/issues/3004
 

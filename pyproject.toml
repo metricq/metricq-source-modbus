@@ -13,4 +13,4 @@ use_parentheses = true
 line_length = 88
 
 [tool.setuptools_scm]
-write_to = "metricq_source_example/version.py"
+write_to = "metricq_source_modbus/version.py"
