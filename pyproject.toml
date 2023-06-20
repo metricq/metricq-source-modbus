@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=56.0.0", "setuptools_scm[toml]~=7.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.black]
+# The default is just fine
+
+[tool.isort]
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+line_length = 88
+
+[tool.setuptools_scm]
+write_to = "metricq_source_example/version.py"
