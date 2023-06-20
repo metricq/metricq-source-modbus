@@ -2,7 +2,19 @@
 
 # MetricQ modbus source
 
-Notes about the CI as is:
+Current limitations
+- only TCP
+- only reading holding registers
+- only float values
+- only big endian
+- only one slave per device
+
+## Configuration
+
+See [the pydantic model](metricq_source_modbus/config_model.py) for a description of the configuration.
+
+## CI
+
 - run all formatters and linters using tox as part of building the docker images
   * black
   * isort

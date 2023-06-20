@@ -35,7 +35,7 @@ from metricq.logging import get_logger
 
 from .source import ModbusSource
 
-logger = get_logger("ModbusSource")
+logger = get_logger()
 
 click_log.basic_config(logger)
 logger.setLevel("INFO")
