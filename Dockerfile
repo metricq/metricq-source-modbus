@@ -6,10 +6,10 @@ RUN apt-get update \
     git \
     && rm -rf /var/lib/apt/lists/* 
 
-COPY --chown=metricq:metricq . /home/metricq/metricq-source-example
+COPY --chown=metricq:metricq . /home/metricq/metricq-source-modbus
 
 USER metricq
-WORKDIR /home/metricq/metricq-source-example
+WORKDIR /home/metricq/metricq-source-modbus
 
 # This is the simplest solution to make sure we only build good packages
 # If you don't like this, go ahead and build better github actions / workflows
@@ -23,4 +23,4 @@ FROM ghcr.io/metricq/metricq-python:v5.2
 
 COPY --from=BUILDER --chown=metricq:metricq /home/metricq/.local /home/metricq/.local
 
-ENTRYPOINT [ "/home/metricq/.local/bin/metricq-source-example" ]
+ENTRYPOINT [ "/home/metricq/.local/bin/metricq-source-modbus" ]

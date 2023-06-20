@@ -1,5 +1,5 @@
 # created by setuptools_scm
-metricq_source_example/version.py
+metricq_source_modbus/version.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
