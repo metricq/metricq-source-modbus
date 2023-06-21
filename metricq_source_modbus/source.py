@@ -145,6 +145,8 @@ class MetricGroup:
     - common address space (based on addresses within the metrics)
     """
 
+    _previous_buffer: Optional[bytes] = None
+
     def _create_metrics(
         self, metrics: dict[str, config_model.Metric]
     ) -> Iterable[Metric]:
@@ -157,6 +159,8 @@ class MetricGroup:
 
     def __init__(self, host: "Host", config: config_model.Group) -> None:
         self.host = host
+
+        self._double_sample = config.double_sample
 
         interval = extract_interval(config)
         if interval is None:
@@ -178,6 +182,12 @@ class MetricGroup:
     def metadata(self) -> dict[str, MetadataDict]:
         return {metric.name: metric.metadata for metric in self._metrics}
 
+    @property
+    def _sampling_interval(self) -> Timedelta:
+        if self._double_sample:
+            return self.interval * 2
+        return self.interval
+
     async def task(
         self,
         stop_future: asyncio.Future[None],
@@ -185,7 +195,9 @@ class MetricGroup:
     ) -> None:
         # Similar code as to metricq.IntervalSource.task, but for individual MetricGroups
         deadline = Timestamp.now()
-        deadline -= deadline % self.interval  # Align deadlines to the interval
+        deadline -= (
+            deadline % self._sampling_interval
+        )  # Align deadlines to the interval
         while True:
             try:
                 await self._update(client)
@@ -194,18 +206,18 @@ class MetricGroup:
                 # Just retry indefinitely
 
             now = Timestamp.now()
-            deadline += self.interval
+            deadline += self._sampling_interval
 
-            if (missed := now - deadline) > Timedelta(0):
-                missed_intervals = 1 + (missed // self.interval)
+            if (missed := (now - deadline)) > Timedelta(0):
+                missed_intervals = 1 + (missed // self._sampling_interval)
                 logger.warning(
                     "Missed deadline {} by {} it is now {} (x{})",
                     deadline,
                     missed,
                     now,
-                    missed,
+                    missed_intervals,
                 )
-                deadline += self.interval * missed_intervals
+                deadline += self._sampling_interval * missed_intervals
 
             timeout = deadline - now
             done, pending = await asyncio.wait(
@@ -237,6 +249,13 @@ class MetricGroup:
         logger.debug(f"Request finished successfully in {duration}")
 
         # TODO insert small sleep and see if that helps align stuff
+
+        if self._double_sample:
+            if self._previous_buffer is not None and self._previous_buffer == buffer:
+                logger.debug("Skipping double sample")
+                self._previous_buffer = None  # Skip only one buffer
+                return
+            self._previous_buffer = buffer
 
         await asyncio.gather(
             *(metric.update(timestamp, buffer) for metric in self._metrics)
