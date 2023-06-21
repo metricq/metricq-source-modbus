@@ -131,10 +131,16 @@ class Metric:
             metadata["unit"] = self.unit
         return metadata
 
-    async def update(self, timestamp: Timestamp, buffer: bytes) -> None:
-        offset = (self.address - self.group.base_address) * BYTES_PER_REGISTER
+    @property
+    def offset(self) -> int:
+        offset = self.address - self.group.base_address
         assert offset >= 0, "offset non-negative"
-        (value,) = struct.unpack_from(">f", buffer=buffer, offset=offset)
+        return offset
+
+    async def update(self, timestamp: Timestamp, buffer: bytes) -> None:
+        (value,) = struct.unpack_from(
+            ">f", buffer=buffer, offset=(self.offset * BYTES_PER_REGISTER)
+        )
         await self._source_metric.send(timestamp, value)
 
 
@@ -148,15 +154,15 @@ class MetricGroup:
 
     _previous_buffer: Optional[bytes] = None
 
-    def _create_metrics(
-        self, metrics: dict[str, config_model.Metric]
-    ) -> Iterable[Metric]:
-        for metric_name, metric_config in metrics.items():
-            yield Metric(
+    def _create_metrics(self, metrics: dict[str, config_model.Metric]) -> list[Metric]:
+        return [
+            Metric(
                 combine_name(self.host.metric_prefix, metric_name),
                 group=self,
                 config=metric_config,
             )
+            for metric_name, metric_config in metrics.items()
+        ]
 
     def __init__(self, host: "Host", config: config_model.Group) -> None:
         self.host = host
@@ -170,8 +176,9 @@ class MetricGroup:
                 raise ConfigError("missing interval")
         self.interval: Timedelta = interval
 
-        # Must be exactly because we use `self.interval` here, use `self._metrics` later
-        self._metrics = list(self._create_metrics(config.metrics))
+        # Must be exactly here because we initialize `self.interval` before
+        # and use `self._metrics` later
+        self._metrics = self._create_metrics(config.metrics)
 
         self.base_address: int = min((metric.address for metric in self._metrics))
         end_address = max(
