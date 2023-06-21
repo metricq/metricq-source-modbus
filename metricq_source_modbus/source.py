@@ -28,6 +28,7 @@
 
 import asyncio
 import struct
+from contextlib import suppress
 from typing import Any, Iterable, Optional, Sequence, cast
 
 from async_modbus import AsyncClient, AsyncTCPClient  # type: ignore
@@ -46,6 +47,9 @@ REGISTERS_PER_VALUE = 2
 
 BYTES_PER_REGISTER = 2
 """Number of bytes per 16 bit modbus register"""
+
+CONNECTION_FAILURE_RETRY_INTERVAL = 10
+"""Interval in seconds to retry connecting to a host after a connection failure"""
 
 
 def combine_name(prefix: str, name: str) -> str:
@@ -128,13 +132,10 @@ class Metric:
         return metadata
 
     async def update(self, timestamp: Timestamp, buffer: bytes) -> None:
-        try:
-            offset = (self.address - self.group.base_address) * BYTES_PER_REGISTER
-            assert offset >= 0, "offset non-negative"
-            (value,) = struct.unpack_from(">f", buffer=buffer, offset=offset)
-            await self._source_metric.send(timestamp, value)
-        except Exception as e:
-            logger.error(f"error in metric send for {self.name}: {e} ({type(e)}")
+        offset = (self.address - self.group.base_address) * BYTES_PER_REGISTER
+        assert offset >= 0, "offset non-negative"
+        (value,) = struct.unpack_from(">f", buffer=buffer, offset=offset)
+        await self._source_metric.send(timestamp, value)
 
 
 class MetricGroup:
@@ -199,11 +200,7 @@ class MetricGroup:
             deadline % self._sampling_interval
         )  # Align deadlines to the interval
         while True:
-            try:
-                await self._update(client)
-            except Exception as e:
-                logger.error(f"Error in MetricGroup._update: {e} ({type(e)}")
-                # Just retry indefinitely
+            await self._update(client)
 
             now = Timestamp.now()
             deadline += self._sampling_interval
@@ -235,15 +232,11 @@ class MetricGroup:
         client: AsyncClient,
     ) -> None:
         timestamp = Timestamp.now()
-        try:
-            raw_values = await client.read_input_registers(
-                self.host.slave_id, self.base_address, self._num_registers
-            )
-            assert len(raw_values) == self._num_registers
-            buffer = struct.pack(f">{len(raw_values)}H", *raw_values)
-        except Exception as e:
-            logger.error(f"Error in read_input_registers: {e} ({type(e)})")
-            return
+        raw_values = await client.read_input_registers(
+            self.host.slave_id, self.base_address, self._num_registers
+        )
+        assert len(raw_values) == self._num_registers
+        buffer = struct.pack(f">{len(raw_values)}H", *raw_values)
 
         duration = Timestamp.now() - timestamp
         logger.debug(f"Request finished successfully in {duration}")
@@ -318,16 +311,28 @@ class Host:
             for metric, metadata in group.metadata.items()
         }
 
+    async def _connect_and_run(self, stop_future: asyncio.Future[None]) -> None:
+        logger.info("Opening connection to {}:{}", self._host, self._port)
+        reader, writer = await asyncio.open_connection(self._host, self._port)
+        try:
+            client = AsyncTCPClient((reader, writer))
+            await asyncio.gather(
+                *[group.task(stop_future, client) for group in self._groups]
+            )
+        finally:
+            with suppress(Exception):
+                writer.close()
+                await writer.wait_closed()
+
     async def task(self, stop_future: asyncio.Future[None]) -> None:
-        reader, writer = await asyncio.open_connection("localhost", 5022)
-        client = AsyncTCPClient((reader, writer))
-
-        await asyncio.gather(
-            *[group.task(stop_future, client) for group in self._groups]
-        )
-
-        writer.close()
-        await writer.wait_closed()
+        retry = True
+        while retry:
+            try:
+                await self._connect_and_run(stop_future)
+                retry = False
+            except Exception as e:
+                logger.error("Error in Host {} task: {} ({})", self._host, e, type(e))
+                await asyncio.sleep(CONNECTION_FAILURE_RETRY_INTERVAL)
 
 
 class ModbusSource(Source):
