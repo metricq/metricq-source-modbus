@@ -48,6 +48,14 @@ class Group(BaseModel, **_model_config):
             raise ValueError("Group must have at least one metric")
         return v
 
+    double_sample: bool = False
+    """
+    If set to true, the metric will be sampled twice per configured interval.
+    If both values are the same, only one value will be published.
+    Use this if you know the internal update rate of the device,
+    but you want to make sure to not miss a value.
+    """
+
 
 class Host(BaseModel, **_model_config):
     hosts: str
