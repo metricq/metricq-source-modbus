@@ -193,7 +193,7 @@ class MetricGroup:
     @property
     def _sampling_interval(self) -> Timedelta:
         if self._double_sample:
-            return self.interval * 2
+            return self.interval // 2
         return self.interval
 
     async def task(
