@@ -126,6 +126,10 @@ class Metric:
             "description": self.description,
             "rate": 1 / self.group.interval.s,
             "interval": self.group.interval.precise_string,
+            "host": self.group.host.host,
+            "port": self.group.host.port,
+            "registerAddress": self.address,
+            "registerType": "float",  # the only option for now
         }
         if self.unit:
             metadata["unit"] = self.unit
@@ -311,6 +315,14 @@ class Host:
             yield from cls._create_from_host_config(source, host_config)
 
     @property
+    def host(self) -> str:
+        return self._host
+
+    @property
+    def port(self) -> int:
+        return self._port
+
+    @property
     def metadata(self) -> dict[str, MetadataDict]:
         return {
             metric: metadata
@@ -319,8 +331,8 @@ class Host:
         }
 
     async def _connect_and_run(self, stop_future: asyncio.Future[None]) -> None:
-        logger.info("Opening connection to {}:{}", self._host, self._port)
-        reader, writer = await asyncio.open_connection(self._host, self._port)
+        logger.info("Opening connection to {}:{}", self.host, self.port)
+        reader, writer = await asyncio.open_connection(self.host, self.port)
         try:
             client = AsyncTCPClient((reader, writer))
             await asyncio.gather(
@@ -338,7 +350,7 @@ class Host:
                 await self._connect_and_run(stop_future)
                 retry = False
             except Exception as e:
-                logger.error("Error in Host {} task: {} ({})", self._host, e, type(e))
+                logger.error("Error in Host {} task: {} ({})", self.host, e, type(e))
                 await asyncio.sleep(CONNECTION_FAILURE_RETRY_INTERVAL)
 
 
