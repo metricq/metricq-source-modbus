@@ -1,4 +1,4 @@
-FROM ghcr.io/metricq/metricq-python:v5.2 AS BUILDER
+FROM ghcr.io/metricq/metricq-python:v5.3 AS BUILDER
 
 USER root
 RUN apt-get update \
@@ -19,7 +19,7 @@ RUN /home/metricq/.local/bin/tox
 RUN pip install --user .
 
 
-FROM ghcr.io/metricq/metricq-python:v5.2
+FROM ghcr.io/metricq/metricq-python:v5.3
 
 COPY --from=BUILDER --chown=metricq:metricq /home/metricq/.local /home/metricq/.local
 
