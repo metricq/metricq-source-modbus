@@ -204,6 +204,7 @@ class MetricGroup:
         self,
         stop_future: asyncio.Future[None],
         client: AsyncClient,
+        lock: asyncio.Lock,
     ) -> None:
         # Similar code as to metricq.IntervalSource.task, but for individual MetricGroups
         deadline = Timestamp.now()
@@ -211,7 +212,7 @@ class MetricGroup:
             deadline % self._sampling_interval
         )  # Align deadlines to the interval
         while True:
-            await self._update(client)
+            await self._update(client, lock)
 
             now = Timestamp.now()
             deadline += self._sampling_interval
@@ -241,11 +242,14 @@ class MetricGroup:
     async def _update(
         self,
         client: AsyncClient,
+        lock: asyncio.Lock,
     ) -> None:
-        timestamp = Timestamp.now()
-        raw_values = await client.read_input_registers(
-            self.host.slave_id, self.base_address, self._num_registers
-        )
+        # We must lock here because modbus cannot handle parallel requests
+        async with lock:
+            timestamp = Timestamp.now()
+            raw_values = await client.read_input_registers(
+                self.host.slave_id, self.base_address, self._num_registers
+            )
         assert len(raw_values) == self._num_registers
         buffer = struct.pack(f">{len(raw_values)}H", *raw_values)
 
@@ -350,8 +354,9 @@ class Host:
         reader, writer = await asyncio.open_connection(self.host, self.port)
         try:
             client = AsyncTCPClient((reader, writer))
+            lock = asyncio.Lock()
             await asyncio.gather(
-                *[group.task(stop_future, client) for group in self._groups]
+                *[group.task(stop_future, client, lock) for group in self._groups]
             )
         finally:
             with suppress(Exception):
