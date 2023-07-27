@@ -29,7 +29,7 @@
 import asyncio
 import struct
 from contextlib import suppress
-from typing import Any, Iterable, Optional, Sequence, cast
+from typing import Any, AsyncIterator, Optional, Sequence, cast
 
 from async_modbus import AsyncClient, AsyncTCPClient  # type: ignore
 from hostlist import expand_hostlist  # type: ignore
@@ -37,6 +37,7 @@ from metricq import JsonDict, MetadataDict, Source, Timedelta, Timestamp, rpc_ha
 from metricq.logging import get_logger
 
 from . import config_model
+from .read_strings import StringReplacer, read_strings
 from .version import __version__  # noqa: F401 # magic import for automatic version
 
 logger = get_logger()
@@ -278,6 +279,7 @@ class Host:
         host: str,
         name: str,
         description: str,
+        replacer: StringReplacer,
         config: config_model.Host,
     ):
         self.source = source
@@ -285,7 +287,7 @@ class Host:
         self._port = config.port
         self.metric_prefix = name
         self.slave_id = config.slave_id
-        self.description = f"{config.description} {description}".strip()
+        self.description = replacer(f"{config.description} {description}".strip())
 
         self._groups = [
             MetricGroup(self, group_config) for group_config in config.groups
@@ -300,11 +302,11 @@ class Host:
         return hosts
 
     @classmethod
-    def _create_from_host_config(
+    async def _create_from_host_config(
         cls,
         source: "ModbusSource",
         host_config: config_model.Host,
-    ) -> Iterable["Host"]:
+    ) -> AsyncIterator["Host"]:
         hosts = cls._parse_hosts(host_config.hosts)
         names = cls._parse_hosts(host_config.names)
         if len(hosts) != len(names):
@@ -317,21 +319,35 @@ class Host:
         else:
             descriptions = [""] * len(hosts)
 
-        for host, name, description in zip(hosts, names, descriptions):
+        replacers = await asyncio.gather(
+            *(
+                read_strings(
+                    h, host_config.port, host_config.slave_id, host_config.strings
+                )
+                for h in hosts
+            )
+        )
+        assert len(hosts) == len(replacers)
+
+        for host, name, description, replacer in zip(
+            hosts, names, descriptions, replacers
+        ):
             yield Host(
                 source=source,
                 host=host,
                 name=name,
                 description=description,
+                replacer=replacer,
                 config=host_config,
             )
 
     @classmethod
-    def create_from_host_configs(
+    async def create_from_host_configs(
         cls, source: "ModbusSource", host_configs: Sequence[config_model.Host]
-    ) -> Iterable["Host"]:
+    ) -> AsyncIterator["Host"]:
         for host_config in host_configs:
-            yield from cls._create_from_host_config(source, host_config)
+            async for host in cls._create_from_host_config(source, host_config):
+                yield host
 
     @property
     def host(self) -> str:
@@ -391,7 +407,9 @@ class ModbusSource(Source):
         if self.hosts is not None:
             await self._stop_host_tasks()
 
-        self.hosts = list(Host.create_from_host_configs(self, config.hosts))
+        self.hosts = [
+            host async for host in Host.create_from_host_configs(self, config.hosts)
+        ]
 
         await self.declare_metrics(
             {
