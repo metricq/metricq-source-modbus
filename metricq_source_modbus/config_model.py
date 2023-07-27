@@ -1,12 +1,12 @@
 from typing import Optional
 
 from pydantic import BaseModel
-from pydantic.class_validators import validator
 from pydantic.config import Extra
 from pydantic.fields import Field
+from pydantic.functional_validators import field_validator
 from pydantic.types import NonNegativeInt, PositiveFloat, PositiveInt
 
-_model_config = {"extra": Extra.forbid, "frozen": True}
+_model_config = {"extra": "forbid", "frozen": True}
 """
 Extra parameters are forbidden and will raise validation errors.
 The parameters will not be mutable.
@@ -42,7 +42,7 @@ class Group(BaseModel, **_model_config):
     metrics: dict[str, Metric]
     """Dictionary of metrics, keys are the metric names prefixed by the host name"""
 
-    @validator("metrics")
+    @field_validator("metrics")
     def metrics_not_empty(cls, v: dict[str, Metric]) -> dict[str, Metric]:
         if len(v) == 0:
             raise ValueError("Group must have at least one metric")
@@ -58,19 +58,27 @@ class Group(BaseModel, **_model_config):
 
 
 class Host(BaseModel, **_model_config):
-    hosts: str
-    """Hostlist of hosts to query, e.g. ``foo[4-6,8].example.com``"""
+    hosts: str | list[str]
+    """
+    Hostlist of hosts to query an expandable string, e.g., ``foo[4-6,8].example.com``
+    or a list.
+    """
     port: PositiveInt = 502
     """Port to connect to"""
-    names: str
+    names: str | list[str]
     """
     Names of the hosts that will be queried, used as prefix, e.g., ``room.E[4-6,8]``.
-    When expanded, the length must match the length of the ``hosts``.
+    Expandable string or a list. The length must match the length of ``hosts``.
     """
     slave_id: int
     """Slave ID to query"""
     description: str = ""
-    """Description prefix for metadata"""
+    """Description prefix for metadata of all included metrics"""
+    descriptions: Optional[str | list[str]] = None
+    """
+    An optional list of descriptions for each host, must match the expanded list of
+    ``hosts`` and ``names``. Is used in addition to ``description``.
+    """
     groups: list[Group] = Field(..., min_items=1)
     """ List of query groups. """
 
