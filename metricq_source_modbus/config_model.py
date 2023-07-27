@@ -57,6 +57,19 @@ class Group(BaseModel, **_model_config):
     """
 
 
+class StringConfig(BaseModel, **_model_config):
+    address: NonNegativeInt
+    """Register address of the value"""
+    size: PositiveInt
+    """Length of the string in bytes (i.e. delta to the next address)"""
+
+    @field_validator("size")
+    def size_multiple_two(cls, v: int) -> int:
+        if v % 2 != 0:
+            raise ValueError("Size (in bytes) must be a multiple of two.")
+        return v
+
+
 class Host(BaseModel, **_model_config):
     hosts: str | list[str]
     """
@@ -73,11 +86,18 @@ class Host(BaseModel, **_model_config):
     slave_id: int
     """Slave ID to query"""
     description: str = ""
-    """Description prefix for metadata of all included metrics"""
+    """
+    Description prefix for metadata of all included metrics.
+    Can use placeholders from ``strings`` using ``$foo`` notation.
+    """
     descriptions: Optional[str | list[str]] = None
     """
     An optional list of descriptions for each host, must match the expanded list of
     ``hosts`` and ``names``. Is used in addition to ``description``.
+    """
+    strings: Optional[dict[str, StringConfig]] = None
+    """
+    A set of strings to get from the device at initialization and use in the ``description``.
     """
     groups: list[Group] = Field(..., min_items=1)
     """ List of query groups. """
