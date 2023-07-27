@@ -273,6 +273,7 @@ class Host:
         *,
         host: str,
         name: str,
+        description: str,
         config: config_model.Host,
     ):
         self.source = source
@@ -280,7 +281,7 @@ class Host:
         self._port = config.port
         self.metric_prefix = name
         self.slave_id = config.slave_id
-        self.description = config.description
+        self.description = f"{config.description} {description}".strip()
 
         self._groups = [
             MetricGroup(self, group_config) for group_config in config.groups
@@ -304,8 +305,22 @@ class Host:
         names = cls._parse_hosts(host_config.names)
         if len(hosts) != len(names):
             raise ConfigError("Number of names and hosts differ")
-        for host, name in zip(hosts, names):
-            yield Host(source=source, host=host, name=name, config=host_config)
+        descriptions: list[str]
+        if host_config.descriptions is not None:
+            descriptions = cls._parse_hosts(host_config.descriptions)
+            if len(hosts) != len(descriptions):
+                raise ConfigError("Number of descriptions and hosts differ")
+        else:
+            descriptions = [""] * len(hosts)
+
+        for host, name, description in zip(hosts, names, descriptions):
+            yield Host(
+                source=source,
+                host=host,
+                name=name,
+                description=description,
+                config=host_config,
+            )
 
     @classmethod
     def create_from_host_configs(
