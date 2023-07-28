@@ -14,7 +14,9 @@ logger = get_logger()
 async def _read_string(client: AsyncClient, slave_id: int, config: StringConfig) -> str:
     assert config.size % 2 == 0
     num_registers = config.size // 2
-    raw_values = await client.read_input_registers(1, 25500, num_registers)
+    raw_values = await client.read_input_registers(
+        slave_id, config.address, num_registers
+    )
     assert len(raw_values) == num_registers
     buffer = struct.pack(f">{len(raw_values)}H", *raw_values)
     if (first_null := buffer.find(b"\x00")) != -1:
