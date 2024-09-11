@@ -28,10 +28,10 @@
 
 import logging
 
-import click
 import click_completion  # type: ignore
 import click_log  # type: ignore
 from metricq.logging import get_logger
+from metricq.cli import metricq_command
 
 from .source import ModbusSource
 
@@ -46,9 +46,7 @@ logger.handlers[0].formatter = logging.Formatter(
 click_completion.init()
 
 
-@click.command()
-@click.option("--server")
-@click.option("--token", default="source-modbus")
+@metricq_command(default_token = "source-modbus")
 @click_log.simple_verbosity_option(logger)  # type: ignore
 def run(server, token) -> None:
     src = ModbusSource(url=server, token=token)
