@@ -325,21 +325,25 @@ class Host:
                     h, host_config.port, host_config.slave_id, host_config.strings
                 )
                 for h in hosts
-            )
+            ),
+            return_exceptions=True,
         )
         assert len(hosts) == len(replacers)
 
         for host, name, description, replacer in zip(
             hosts, names, descriptions, replacers
         ):
-            yield Host(
-                source=source,
-                host=host,
-                name=name,
-                description=description,
-                replacer=replacer,
-                config=host_config,
-            )
+            if not isinstance(replacer, Exception):
+                yield Host(
+                    source=source,
+                    host=host,
+                    name=name,
+                    description=description,
+                    replacer=replacer,
+                    config=host_config,
+                )
+            else:
+                logger.error(f"Failed to connect to: {host} ({name}). Skipping.")
 
     @classmethod
     async def create_from_host_configs(
