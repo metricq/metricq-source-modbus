@@ -44,14 +44,18 @@ async def read_strings(
 ) -> StringReplacer:
     if not strings:
         return StringReplacer({})
+    
     logger.info("Reading device strings from {}:{}", host, port)
-    reader, writer = await asyncio.open_connection(host, port)
-    client = AsyncTCPClient((reader, writer))
-    values = {
-        key: await _read_string(client, slave_id, config)
-        for key, config in strings.items()
-    }
-    writer.close()
-    await writer.wait_closed()
+
+    async with asyncio.timeout(5):
+        reader, writer = await asyncio.open_connection(host, port)
+        client = AsyncTCPClient((reader, writer))
+        values = {
+            key: await _read_string(client, slave_id, config)
+            for key, config in strings.items()
+        }
+        writer.close()
+        await writer.wait_closed()
+
     logger.info("Device strings for {}:{}: {}", host, port, values)
     return StringReplacer(values)
