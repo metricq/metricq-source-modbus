@@ -333,7 +333,7 @@ class Host:
         for host, name, description, replacer in zip(
             hosts, names, descriptions, replacers
         ):
-            if not isinstance(replacer, Exception):
+            if isinstance(replacer, StringReplacer):
                 yield Host(
                     source=source,
                     host=host,
@@ -343,7 +343,9 @@ class Host:
                     config=host_config,
                 )
             else:
-                logger.error(f"Failed to connect to: {host} ({name}). Skipping.")
+                logger.exception(
+                    f"Failed to connect to: {host} ({name}). Skipping.", replacer
+                )
 
     @classmethod
     async def create_from_host_configs(

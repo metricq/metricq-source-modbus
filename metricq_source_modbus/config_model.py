@@ -99,7 +99,7 @@ class Host(BaseModel, **_model_config):
     """
     A set of strings to get from the device at initialization and use in the ``description``.
     """
-    groups: list[Group] = Field(..., min_items=1)
+    groups: list[Group] = Field(..., min_length=1)
     """ List of query groups. """
 
 
@@ -111,4 +111,4 @@ class Source(BaseModel, extra=Extra.ignore, frozen=True):
     A string can also be used that will be parsed by MetricQ exactly, e.g. ``100ms``.
     If omitted, the global interval will be used.
     """
-    hosts: list[Host] = Field(..., min_items=1)
+    hosts: list[Host] = Field(..., min_length=1)
