@@ -44,7 +44,7 @@ async def read_strings(
 ) -> StringReplacer:
     if not strings:
         return StringReplacer({})
-    
+
     logger.info("Reading device strings from {}:{}", host, port)
 
     async with asyncio.timeout(5):
