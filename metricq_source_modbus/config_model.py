@@ -48,6 +48,9 @@ class Group(BaseModel, **_model_config):
             raise ValueError("Group must have at least one metric")
         return v
 
+    slave_id: int | None = None
+    """Slave ID to query"""
+
     double_sample: bool = False
     """
     If set to true, the metric will be sampled twice per configured interval.

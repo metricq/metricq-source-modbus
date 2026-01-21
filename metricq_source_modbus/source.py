@@ -154,6 +154,7 @@ class MetricGroup:
     Represents a set of metrics
     - same host (implicitly)
     - same interval (implicitly)
+    - same slave id
     - common address space (based on addresses within the metrics)
     """
 
@@ -180,6 +181,10 @@ class MetricGroup:
             if interval is None:
                 raise ConfigError("missing interval")
         self.interval: Timedelta = interval
+
+        self.slave_id = (
+            config.slave_id if config.slave_id is not None else host.slave_id
+        )
 
         # Must be exactly here because we initialize `self.interval` before
         # and use `self._metrics` later
@@ -249,7 +254,7 @@ class MetricGroup:
         async with lock:
             timestamp = Timestamp.now()
             raw_values = await client.read_input_registers(
-                self.host.slave_id, self.base_address, self._num_registers
+                self.slave_id, self.base_address, self._num_registers
             )
         assert len(raw_values) == self._num_registers
         buffer = struct.pack(f">{len(raw_values)}H", *raw_values)
