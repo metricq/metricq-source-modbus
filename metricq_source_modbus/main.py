@@ -50,6 +50,6 @@ click_completion.init()
 @click.option("--server")
 @click.option("--token", default="source-modbus")
 @click_log.simple_verbosity_option(logger)  # type: ignore
-def run(server, token) -> None:
+def run(server: str, token: str) -> None:
     src = ModbusSource(url=server, token=token)
     src.run()
