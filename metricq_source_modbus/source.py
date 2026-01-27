@@ -129,6 +129,7 @@ class Metric:
             "interval": self.group.interval.precise_string,
             "host": self.group.host.host,
             "port": self.group.host.port,
+            "slaveId": self.group.slave_id,
             "registerAddress": self.address,
             "registerType": "float",  # the only option for now
         }
@@ -253,7 +254,7 @@ class MetricGroup:
         # We must lock here because modbus cannot handle parallel requests
         async with lock:
             timestamp = Timestamp.now()
-            raw_values = await client.read_input_registers(
+            raw_values = await client.read_holding_registers(
                 self.slave_id, self.base_address, self._num_registers
             )
         assert len(raw_values) == self._num_registers
