@@ -52,6 +52,14 @@ BYTES_PER_REGISTER = 2
 CONNECTION_FAILURE_RETRY_INTERVAL = 10
 """Interval in seconds to retry connecting to a host after a connection failure"""
 
+CONNECTION_TIMEOUT = 10
+"""Timeout in seconds for establishing a TCP connection to a modbus device"""
+
+MODBUS_READ_TIMEOUT = 30
+"""Timeout in seconds for a single modbus read operation.
+If a read hangs longer than this (e.g. due to a half-open TCP connection),
+it is aborted and the connection is re-established."""
+
 
 def combine_name(prefix: str, name: str) -> str:
     prefix = prefix.rstrip(".")
@@ -254,14 +262,17 @@ class MetricGroup:
         # We must lock here because modbus cannot handle parallel requests
         async with lock:
             timestamp = Timestamp.now()
-            raw_values = await client.read_holding_registers(
-                self.slave_id, self.base_address, self._num_registers
+            raw_values = await asyncio.wait_for(
+                client.read_holding_registers(
+                    self.slave_id, self.base_address, self._num_registers
+                ),
+                timeout=MODBUS_READ_TIMEOUT,
             )
         assert len(raw_values) == self._num_registers
         buffer = struct.pack(f">{len(raw_values)}H", *raw_values)
 
         duration = Timestamp.now() - timestamp
-        logger.debug(f"Request finished successfully in {duration}")
+        logger.debug("Request finished successfully in {}", duration)
 
         # TODO insert small sleep and see if that helps align stuff
 
@@ -379,17 +390,32 @@ class Host:
 
     async def _connect_and_run(self, stop_future: asyncio.Future[None]) -> None:
         logger.info("Opening connection to {}:{}", self.host, self.port)
-        reader, writer = await asyncio.open_connection(self.host, self.port)
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(self.host, self.port),
+            timeout=CONNECTION_TIMEOUT,
+        )
+        logger.info("Connected to {}:{}", self.host, self.port)
         try:
             client = AsyncTCPClient((reader, writer))
             lock = asyncio.Lock()
-            await asyncio.gather(
-                *[group.task(stop_future, client, lock) for group in self._groups]
-            )
+            tasks = [
+                asyncio.create_task(group.task(stop_future, client, lock))
+                for group in self._groups
+            ]
+            try:
+                await asyncio.gather(*tasks)
+            finally:
+                # If one group task fails (e.g. due to connection loss) while
+                # others are still running on the same connection, cancel the
+                # rest so we don't leak tasks racing against the reconnect.
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
         finally:
             with suppress(Exception):
                 writer.close()
                 await writer.wait_closed()
+            logger.info("Connection to {}:{} closed", self.host, self.port)
 
     async def task(self, stop_future: asyncio.Future[None]) -> None:
         retry = True
@@ -397,9 +423,14 @@ class Host:
             try:
                 await self._connect_and_run(stop_future)
                 retry = False
-            except Exception as e:
-                logger.error("Error in Host {} task: {} ({})", self.host, e, type(e))
+            except Exception:
+                logger.exception(
+                    "Error in host {} task, reconnecting in {}s",
+                    self.host,
+                    CONNECTION_FAILURE_RETRY_INTERVAL,
+                )
                 await asyncio.sleep(CONNECTION_FAILURE_RETRY_INTERVAL)
+                logger.info("Reconnecting to {}:{}", self.host, self.port)
 
 
 class ModbusSource(Source):
